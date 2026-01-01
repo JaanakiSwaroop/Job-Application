@@ -2,7 +2,6 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
-const cloudinary = require('cloudinary').v2;
 const { pool, initDb } = require('./db');
 
 const app = express();
@@ -17,10 +16,6 @@ app.get('/', (req, res) => {
     res.send('Job Tracker API is running. Go to /api/jobs to see data.');
 });
 
-// Cloudinary Config
-// It automatically picks up CLOUDINARY_URL from .env
-// We can just verify or explicitly configure if needed, but env is standard.
-
 // Multer (Memory Storage)
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
@@ -28,37 +23,42 @@ const upload = multer({ storage });
 // Initialize DB
 initDb();
 
-// Helper to upload buffer to Cloudinary
-const uploadToCloudinary = (buffer, filename) => {
-    console.log(`Uploading file: ${filename}, Size: ${buffer.length} bytes`);
-    return new Promise((resolve, reject) => {
-        const uploadStream = cloudinary.uploader.upload_stream(
-            {
-                resource_type: 'auto',
-                folder: 'job-applications',
-                access_mode: 'public',
-                type: 'upload'
-            },
-            (error, result) => {
-                if (error) {
-                    console.error('Cloudinary Upload Error:', error);
-                    return reject(error);
-                }
-                console.log('Cloudinary Result:', result.secure_url);
-                resolve(result);
-            }
-        );
-        uploadStream.end(buffer);
-    });
-};
-
 // Routes
 
-// GET all jobs
+// GET all jobs (Construct resume URL internally)
 app.get('/api/jobs', async (req, res) => {
     try {
-        const result = await pool.query('SELECT * FROM jobs ORDER BY id DESC');
+        const query = `
+            SELECT id, company, role, status, date_applied, 
+            CASE WHEN resume_path IS NOT NULL AND length(resume_path) > 0 THEN '/api/jobs/' || id || '/resume' ELSE null END as resume_path 
+            FROM jobs ORDER BY id DESC
+        `;
+        const result = await pool.query(query);
+        // We append the full URL if needed, but client handles relative paths fine usually.
+        // Actually, client expects full URL or handling.
+        // The query returns '/api/jobs/123/resume'.
         res.json(result.rows);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET Resume Content (Stream Base64 back as PDF)
+app.get('/api/jobs/:id/resume', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = await pool.query('SELECT resume_path FROM jobs WHERE id = $1', [id]);
+
+        if (result.rowCount === 0 || !result.rows[0].resume_path) {
+            return res.status(404).send('Resume not found');
+        }
+
+        const base64Data = result.rows[0].resume_path;
+        const buffer = Buffer.from(base64Data, 'base64');
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="resume_${id}.pdf"`);
+        res.send(buffer);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -71,20 +71,27 @@ app.post('/api/jobs', upload.single('resume'), async (req, res) => {
         let resume_path = null;
 
         if (req.file) {
-            const result = await uploadToCloudinary(req.file.buffer, req.file.originalname);
-            resume_path = result.secure_url;
+            // Store as Base64 string
+            resume_path = req.file.buffer.toString('base64');
         }
 
         const query = `
             INSERT INTO jobs (company, role, status, date_applied, resume_path) 
             VALUES ($1, $2, $3, $4, $5) 
-            RETURNING *
+            RETURNING id, company, role, status, date_applied
         `;
         const values = [company, role, status, date_applied, resume_path];
         const result = await pool.query(query, values);
 
-        res.status(201).json(result.rows[0]);
+        // Return constructed object with path so frontend updates immediately
+        const newJob = result.rows[0];
+        if (resume_path) {
+            newJob.resume_path = `/api/jobs/${newJob.id}/resume`;
+        }
+
+        res.status(201).json(newJob);
     } catch (error) {
+        console.error("Error creating job:", error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -100,20 +107,29 @@ app.put('/api/jobs/:id', upload.single('resume'), async (req, res) => {
         let paramIndex = 5;
 
         if (req.file) {
-            const result = await uploadToCloudinary(req.file.buffer, req.file.originalname);
             updateQuery += `, resume_path = $${paramIndex}`;
-            values.push(result.secure_url);
+            values.push(req.file.buffer.toString('base64'));
             paramIndex++;
         }
 
-        updateQuery += ` WHERE id = $${paramIndex} RETURNING *`;
+        updateQuery += ` WHERE id = $${paramIndex} RETURNING id, company, role, status, date_applied`;
         values.push(id);
 
         const result = await pool.query(updateQuery, values);
 
         if (result.rowCount === 0) return res.status(404).json({ error: 'Job not found' });
 
-        res.json(result.rows[0]);
+        const updatedJob = result.rows[0];
+        // We can't easily check if it has a resume now without selecting it or knowing we just updated it.
+        // For simplicity, return the path if we just uploaded one, or we might need to query if it exists.
+        // But the frontend usually refetches or we can just send back what we know.
+        // For now, if we uploaded, send path. If not, we don't know if previous existed from this select.
+        // Let's keep it simple.
+        if (req.file) {
+            updatedJob.resume_path = `/api/jobs/${updatedJob.id}/resume`;
+        }
+
+        res.json(updatedJob);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
