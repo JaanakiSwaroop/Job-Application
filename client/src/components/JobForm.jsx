@@ -81,6 +81,7 @@ const JobForm = () => {
             navigate('/');
         } catch (error) {
             console.error('Error saving job', error);
+            alert(`Failed to save application.\nError: ${error.message}\nAPI URL was: ${API_URL}`);
         }
     };
 
