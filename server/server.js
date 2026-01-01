@@ -30,17 +30,19 @@ initDb();
 
 // Helper to upload buffer to Cloudinary
 const uploadToCloudinary = (buffer, filename) => {
+    console.log(`Uploading file: ${filename}, Size: ${buffer.length} bytes`);
     return new Promise((resolve, reject) => {
         const uploadStream = cloudinary.uploader.upload_stream(
             {
-                resource_type: 'raw', // Treat as raw file to avoid PDF corruption
-                folder: 'job-applications',
-                use_filename: true,
-                unique_filename: true,
-                filename_override: filename
+                resource_type: 'auto',
+                folder: 'job-applications'
             },
             (error, result) => {
-                if (error) return reject(error);
+                if (error) {
+                    console.error('Cloudinary Upload Error:', error);
+                    return reject(error);
+                }
+                console.log('Cloudinary Result:', result.secure_url);
                 resolve(result);
             }
         );
