@@ -29,10 +29,16 @@ const upload = multer({ storage });
 initDb();
 
 // Helper to upload buffer to Cloudinary
-const uploadToCloudinary = (buffer) => {
+const uploadToCloudinary = (buffer, filename) => {
     return new Promise((resolve, reject) => {
         const uploadStream = cloudinary.uploader.upload_stream(
-            { resource_type: 'auto', folder: 'job-applications' },
+            {
+                resource_type: 'raw', // Treat as raw file to avoid PDF corruption
+                folder: 'job-applications',
+                use_filename: true,
+                unique_filename: true,
+                filename_override: filename
+            },
             (error, result) => {
                 if (error) return reject(error);
                 resolve(result);
@@ -61,7 +67,7 @@ app.post('/api/jobs', upload.single('resume'), async (req, res) => {
         let resume_path = null;
 
         if (req.file) {
-            const result = await uploadToCloudinary(req.file.buffer);
+            const result = await uploadToCloudinary(req.file.buffer, req.file.originalname);
             resume_path = result.secure_url;
         }
 
@@ -90,7 +96,7 @@ app.put('/api/jobs/:id', upload.single('resume'), async (req, res) => {
         let paramIndex = 5;
 
         if (req.file) {
-            const result = await uploadToCloudinary(req.file.buffer);
+            const result = await uploadToCloudinary(req.file.buffer, req.file.originalname);
             updateQuery += `, resume_path = $${paramIndex}`;
             values.push(result.secure_url);
             paramIndex++;
