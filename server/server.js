@@ -35,7 +35,9 @@ const uploadToCloudinary = (buffer, filename) => {
         const uploadStream = cloudinary.uploader.upload_stream(
             {
                 resource_type: 'auto',
-                folder: 'job-applications'
+                folder: 'job-applications',
+                access_mode: 'public',
+                type: 'upload'
             },
             (error, result) => {
                 if (error) {
