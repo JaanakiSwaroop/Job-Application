@@ -65,7 +65,7 @@ const JobList = () => {
 
                         <div className="job-actions">
                             {job.resume_path && (
-                                <a href={`http://localhost:3000${job.resume_path}`} target="_blank" rel="noopener noreferrer" className="btn btn-secondary" title="View Resume">
+                                <a href={job.resume_path.startsWith('http') ? job.resume_path : `${BASE_URL.replace('/api', '')}${job.resume_path}`} target="_blank" rel="noopener noreferrer" className="btn btn-secondary" title="View Resume">
                                     <FileText size={16} />
                                 </a>
                             )}
