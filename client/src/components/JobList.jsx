@@ -3,7 +3,8 @@ import axios from 'axios';
 import { Link } from 'react-router-dom';
 import { FileText, Trash2, Edit, ExternalLink, Calendar, Building } from 'lucide-react';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/jobs';
+const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+const API_URL = `${BASE_URL}/jobs`;
 
 const JobList = () => {
     const [jobs, setJobs] = useState([]);

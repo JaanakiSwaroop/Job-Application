@@ -12,6 +12,11 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
+// Health Check
+app.get('/', (req, res) => {
+    res.send('Job Tracker API is running. Go to /api/jobs to see data.');
+});
+
 // Cloudinary Config
 // It automatically picks up CLOUDINARY_URL from .env
 // We can just verify or explicitly configure if needed, but env is standard.
